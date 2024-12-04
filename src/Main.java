@@ -42,8 +42,12 @@ public class Main {
             int segmentArrLength = responseArr.length;
             int index = 0;
             boolean isPending = true;
+            short maxRetries = 3;
 
             do {
+                if(maxRetries == 0){
+                    return;
+                }
                 String line = responseArr[index].trim();
                 if (!line.startsWith("#") && line.length() > 1) {
 
@@ -64,6 +68,8 @@ public class Main {
                             mergeFile(filename, folder_name);
                             index++;
                             isPending = index <= (segmentArrLength - 1);
+                        } else {
+                            maxRetries--;
                         }
                     }
                 } else {
@@ -137,7 +143,7 @@ public class Main {
     public static byte[] getRequestBytes(String url) throws Exception {
         HttpClient client = HttpClient.newHttpClient();
 
-        HttpRequest request = HttpRequest.newBuilder().timeout(Duration.ofSeconds(10)).uri(URI.create(url)).GET().build();
+        HttpRequest request = HttpRequest.newBuilder().timeout(Duration.ofSeconds(15)).uri(URI.create(url)).GET().build();
 
 
         HttpResponse<byte[]> response;
@@ -196,7 +202,7 @@ public class Main {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                System.out.printf("\n %s%n", line);
+                System.out.printf("\r %s%n", line);
             }
         }
 

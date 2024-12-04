@@ -20,7 +20,7 @@ public class Cache{
         File file = new File(fileName);
             try {
                 if(!file.exists()){
-                    FileOutputStream fos = new FileOutputStream("cache.json");
+                    FileOutputStream fos = new FileOutputStream(fileName);
                     fos.write("{}".getBytes());
                     fos.close();
                 }
@@ -46,7 +46,6 @@ public class Cache{
         saveToFile();
     }
 
-    // Get value by key
     public String get(String key) {
         return cache.get(key);
     }

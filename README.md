@@ -22,8 +22,11 @@ A cli written in java to download m3u8 manifest based video and combine them in 
 
 ### Compilation (graalvm)
 ```bash
+    # compile the src code
+    javac -cp json-20240303.jar src/*.java
+    
     # installing graalvm gives you the native-image command 
-    native-image -cp ./src/ Main --enable-sbom -march=native --strict-image-heap
+    native-image -cp . json-20240303.jar:./src Main --enable-sbom -march=native --strict-image-heap --no-fallback
 ```
 
 lastly, you'll need a [statically compiled binary of ffmpeg](https://johnvansickle.com/ffmpeg/) or else the video merge would fail until ffmpeg successfully merges it together, extract it and add the ffmpeg binary to the root directory where your code is executing or wherever you decide to run the graalvm binary at
