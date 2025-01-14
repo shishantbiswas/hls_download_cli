@@ -116,7 +116,6 @@ static size_t mem_cb(void *contents, size_t size, size_t nmemb, void *userp) {
     Needs to be Freed manually or free the MemoryStruct
 */
 char *fetch(const char *url, MemoryStruct *chunk) {
-  remove_invisible_chars(url);
   CURL *curl = curl_easy_init();
   CURLcode response;
 
@@ -172,12 +171,12 @@ int download_file(char *uri, char *filename) {
   curl = curl_easy_init();
   if (curl) {
     remove_invisible_chars(uri);
-    // printf("Downloading %s\n", uri);
 
     curl_easy_setopt(curl, CURLOPT_URL, uri);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
     curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
 
     res = curl_easy_perform(curl);
     if (res != CURLE_OK) {
@@ -215,7 +214,6 @@ void delete_directory(const char *path) {
   }
 
   while ((entry = readdir(dir)) != NULL) {
-    // Skip "." and ".."
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
       continue;
 

@@ -73,9 +73,10 @@ int main(int argc, char *argv[]) {
     // download_file("http://localhost:3000/segment_00.ts", "lol.ts");
     // ffmpeg_merge("","");
     // printf("%d",rm_video("uri","http://localhost:3000/i/master.m3u8"));
-    char *lo = make_complete_url("http://localhost:3000/master.m3u8","http://localhost:3000/segment_00.ts");
-    printf("%s",lo);
-    free(lo);
+    // char *lo = make_complete_url("http://localhost:3000/master.m3u8","http://localhost:3000/segment_00.ts");
+    // printf("%s",lo);
+    // free(lo);
+    // complete_segment_status("250kbit/seq-0.ts");
   } else if (strcmp(command, "init") == 0) {
     init_db();
   } else if (strcmp(command, "rm_db") == 0) {

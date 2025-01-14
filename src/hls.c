@@ -147,8 +147,10 @@ void run_hls_command(char *uri, char *video_name) {
 }
 
 volatile int completed = 0;
+volatile int failed = 0;
 int total = 0;
 sem_t semaphore;
+sqlite3 *db;
 
 void *loading_indicator(void *arg) {
 
@@ -168,16 +170,23 @@ typedef struct {
   char folder_name[512];
 } Info;
 
-pthread_mutex_t status_mutex = PTHREAD_MUTEX_INITIALIZER;
-
 void *thread_function(void *arg) {
   Info *info = (Info *)arg;
   sem_wait(&semaphore);
+
+  // if in local fs and db shows pending false increment completed and skip downloading
+  if (get_segment_status(db, info->segment_name) == 0) {
+    __sync_fetch_and_add(&completed, 1);
+    sem_post(&semaphore);
+    free(info);
+    printf("\rFound Cache %s", info->segment_name);
+    return NULL;
+  }
+
   int success = 0;
   int retries = 5;
   char path[1000];
   snprintf(path, sizeof(path), "%s/%s", info->folder_name, info->segment_name);
-  // printf("\npath : %s\nuri : %s", path, info->segment_uri);
   while (retries > 0) {
     int result = download_file(info->segment_uri, path);
     if (result != 0) {
@@ -186,14 +195,13 @@ void *thread_function(void *arg) {
       continue;
     }
     success = 1;
-    pthread_mutex_lock(&status_mutex);
-    complete_segment_status(info->segment_name);
-    pthread_mutex_unlock(&status_mutex);
+    int lol = complete_segment_status(db, info->segment_name);
 
     break;
   }
 
   if (!success) {
+    __sync_fetch_and_add(&failed, 1);
     fprintf(stderr, "Failed to download file after multiple attempts: %s\n",
             info->segment_name);
   }
@@ -249,7 +257,7 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
   int merge_file_errors = 0;
   for (int i = 0; seperated[i] != NULL; i++) {
     remove_invisible_chars(seperated[i]);
-    if (!start_with("#EXT", seperated[i])) {
+    if (!start_with("#EXT", seperated[i]) && strlen(seperated[i]) > 0) {
       char *temp = make_segment_from_url(seperated[i]);
       remove_invisible_chars(temp);
       if (merge_file(path, temp) != 0) {
@@ -265,13 +273,12 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
   }
 
   pthread_t threads[total];
-  sem_init(&semaphore, 0, 5);
+  sem_init(&semaphore, 0, 3);
   pthread_t loader_thread;
   pthread_create(&loader_thread, NULL, loading_indicator, NULL);
 
   int added = 0;
 
-  sqlite3 *db;
   char result[256];
   char *home = getenv("HOME");
 
@@ -288,59 +295,62 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
 
   for (int i = 0; seperated[i] != NULL; i++) {
     remove_invisible_chars(seperated[i]);
-    if (!start_with("#EXT", seperated[i])) {
+    if (!start_with("#EXT", seperated[i]) && strlen(seperated[i]) > 0) {
       char *complete_seg_uri = make_complete_url(uri, seperated[i]);
-      if (get_segment_status(db, seperated[i]) ==
-          -1) { // doesn't exists in cache
-        add_segment_to_video(db, og_uri, seperated[i]);
+      char *seg_name = make_segment_from_url(seperated[i]);
+      char *seg_uri = make_complete_url(og_uri, seperated[i]);
 
-        Info *info = malloc(sizeof(Info));
-        if (info == NULL) {
-          perror("malloc failed");
-          exit(EXIT_FAILURE);
-        }
-        strncpy(info->uri, uri, sizeof(info->uri) - 1);
-        strncpy(info->segment_uri, complete_seg_uri,
-                sizeof(info->segment_uri) - 1);
-        char *temp = make_segment_from_url(seperated[i]);
-        strncpy(info->segment_name, temp, sizeof(info->segment_name) - 1);
-        free(temp);
-        strncpy(info->folder_name, folder_name, sizeof(info->folder_name) - 1);
-
-        info->uri[sizeof(info->uri) - 1] = '\0';
-        info->folder_name[sizeof(info->folder_name) - 1] = '\0';
-        info->segment_uri[sizeof(info->segment_uri) - 1] = '\0';
-        info->segment_name[sizeof(info->segment_name) - 1] = '\0';
-        free(complete_seg_uri);
-        pthread_create(&threads[added], NULL, thread_function, info);
-        added++;
-      } else if (get_segment_status(db, seperated[i]) ==
-                 1) { // exists but pending
-        Info *info = malloc(sizeof(Info));
-        if (info == NULL) {
-          perror("malloc failed");
-          exit(EXIT_FAILURE);
-        }
-        strncpy(info->uri, uri, sizeof(info->uri) - 1);
-        strncpy(info->segment_uri, complete_seg_uri,
-                sizeof(info->segment_uri) - 1);
-        char *temp = make_segment_from_url(seperated[i]);
-        strncpy(info->segment_name, temp, sizeof(info->segment_name) - 1);
-        free(temp);
-        strncpy(info->folder_name, folder_name, sizeof(info->folder_name) - 1);
-
-        info->uri[sizeof(info->uri) - 1] = '\0';
-        info->folder_name[sizeof(info->folder_name) - 1] = '\0';
-        info->segment_uri[sizeof(info->segment_uri) - 1] = '\0';
-        info->segment_name[sizeof(info->segment_name) - 1] = '\0';
-        free(complete_seg_uri);
-        pthread_create(&threads[added], NULL, thread_function, info);
-        added++;
-      } else if (get_segment_status(db, seperated[i]) ==
-                 0) { // exists and complete
-        total--;
-        continue;
+      Info *info = malloc(sizeof(Info));
+      if (info == NULL) {
+        perror("malloc failed");
+        exit(EXIT_FAILURE);
       }
+
+      if (get_segment_status(db, seg_name) == -1) { // doesn't exists in cache
+
+        add_segment_to_video(db, seg_uri, seg_name, og_uri);
+        strncpy(info->uri, uri, sizeof(info->uri) - 1);
+        strncpy(info->segment_uri, complete_seg_uri,
+                sizeof(info->segment_uri) - 1);
+        char *temp = make_segment_from_url(seperated[i]);
+        strncpy(info->segment_name, temp, sizeof(info->segment_name) - 1);
+        free(temp);
+        strncpy(info->folder_name, folder_name, sizeof(info->folder_name) - 1);
+
+        info->uri[sizeof(info->uri) - 1] = '\0';
+        info->folder_name[sizeof(info->folder_name) - 1] = '\0';
+        info->segment_uri[sizeof(info->segment_uri) - 1] = '\0';
+        info->segment_name[sizeof(info->segment_name) - 1] = '\0';
+        free(complete_seg_uri);
+        pthread_create(&threads[added], NULL, thread_function, info);
+        added++;
+      } else
+      // if (get_segment_status(db, seg_name) == 1)
+      { // exists but pending
+
+        strncpy(info->uri, uri, sizeof(info->uri) - 1);
+        strncpy(info->segment_uri, complete_seg_uri,
+                sizeof(info->segment_uri) - 1);
+        char *temp = make_segment_from_url(seperated[i]);
+        strncpy(info->segment_name, temp, sizeof(info->segment_name) - 1);
+        free(temp);
+        strncpy(info->folder_name, folder_name, sizeof(info->folder_name) - 1);
+
+        info->uri[sizeof(info->uri) - 1] = '\0';
+        info->folder_name[sizeof(info->folder_name) - 1] = '\0';
+        info->segment_uri[sizeof(info->segment_uri) - 1] = '\0';
+        info->segment_name[sizeof(info->segment_name) - 1] = '\0';
+        free(complete_seg_uri);
+        pthread_create(&threads[added], NULL, thread_function, info);
+        added++;
+      }
+      // else if (get_segment_status(db, seperated[i]) == 0) { // exists and
+      // complete
+      //   total--;
+      //   continue;
+      // }
+      free(seg_uri);
+      free(seg_name);
     }
   }
 
@@ -359,6 +369,14 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
 
   snprintf(output_file, sizeof(output_file), "%s/Downloads/%s.mp4", home,
            folder_name);
+
+  if (failed > 0) {
+    printf("\nFailed to download all segment\nRerun the command to download "
+           "missing segment",
+           "");
+    return 1;
+  }
+
   int success = ffmpeg_merge(folder_name, output_file);
   if (success == 0) {
     rm_video(uri);

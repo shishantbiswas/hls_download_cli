@@ -43,6 +43,7 @@ int init_db() {
     CREATE TABLE IF NOT EXISTS segments (\
         pending BOOLEAN NOT NULL DEFAULT 0,\
         name TEXT NOT NULL,\
+        segment_uri TEXT NOT NULL,\
         video_uri TEXT NOT NULL,\
         PRIMARY KEY (video_uri, name),\
         FOREIGN KEY (video_uri) REFERENCES videos(uri) ON DELETE CASCADE\
@@ -250,7 +251,6 @@ int rm_video(char *uri) {
   }
   sqlite3_busy_timeout(db, 5000);
 
-
   rc = sqlite3_exec(db, "PRAGMA foreign_keys = ON;", 0, 0, &err_msg);
   if (rc != SQLITE_OK) {
     fprintf(stderr, "Failed to enable foreign keys: %s\n", sqlite3_errmsg(db));
@@ -295,15 +295,16 @@ int rm_video(char *uri) {
   return 0;
 }
 
-int add_segment_to_video(sqlite3 *db, char *uri, char *segment_name) {
+int add_segment_to_video(sqlite3 *db, char *uri, char *segment_name,
+                         char *og_uri) {
   char sql[1000];
 
   char *err_msg = NULL;
 
-  snprintf(
-      sql, sizeof(sql),
-      "INSERT INTO segments (name,pending,video_uri) VALUES ('%s',1,'%s');",
-      segment_name, uri);
+  snprintf(sql, sizeof(sql),
+           "INSERT INTO segments (name,pending,video_uri,segment_uri) VALUES "
+           "('%s',1,'%s','%s');",
+           segment_name, og_uri, uri);
 
   int rc = sqlite3_exec(db, sql, 0, 0, &err_msg);
   if (rc != SQLITE_OK) {
@@ -343,30 +344,17 @@ int get_segment_status(sqlite3 *db, char *name) {
   return pending;
 }
 
-int complete_segment_status(char *name) {
+int complete_segment_status(sqlite3 *db, char *name) {
   char *home = getenv("HOME");
   char result[256];
   char sql[1000] = "UPDATE segments SET pending = 0 WHERE name = ?;";
 
-  sqlite3 *db;
-  char *err_msg = NULL;
-
-  snprintf(result, sizeof(result), "%s/.local/share/spd/cache.db", home);
-  int rc = sqlite3_open(result, &db);
-
-  if (rc != SQLITE_OK) {
-    fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return 1;
-  }
-
-  sqlite3_busy_timeout(db, 5000);
+  // sqlite3_busy_timeout(db, 5000);
 
   sqlite3_stmt *stmt;
-  rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+  int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
   if (rc != SQLITE_OK) {
     fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
     return 1;
   }
 
@@ -374,7 +362,6 @@ int complete_segment_status(char *name) {
   if (rc != SQLITE_OK) {
     fprintf(stderr, "Failed to bind name: %s\n", sqlite3_errmsg(db));
     sqlite3_finalize(stmt);
-    sqlite3_close(db);
     return 1;
   }
 
@@ -382,11 +369,9 @@ int complete_segment_status(char *name) {
   if (rc != SQLITE_DONE) {
     fprintf(stderr, "Failed to execute statement: %s\n", sqlite3_errmsg(db));
     sqlite3_finalize(stmt);
-    sqlite3_close(db);
     return 1;
   }
 
   sqlite3_finalize(stmt);
-  sqlite3_close(db);
   return 0;
 }
