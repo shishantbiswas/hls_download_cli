@@ -139,10 +139,10 @@ void run_hls_command(char *uri, char *video_name) {
       char *video_uri = make_complete_url(uri, video_resolution);
       prepare_download(video_uri, uri, video_name);
       free(video_uri);
+      free(video_resolution);
     }
   }
   free(chunk.memory);
-
   return;
 }
 
@@ -155,7 +155,10 @@ sqlite3 *db;
 void *loading_indicator(void *arg) {
 
   while (completed < total) {
-    printf("\rProgress: %d/%d completed", completed, total);
+    int percentage = (int)(((float)completed / total) * 100);
+    printf("\r[%s] Progress: %d %% %d/%d completed",
+    percentage % 2 == 0 ? "/" : "\\"
+    , percentage, completed, total);
     fflush(stdout);
     usleep(20000);
   }
@@ -163,7 +166,7 @@ void *loading_indicator(void *arg) {
   return NULL;
 }
 
-typedef struct {
+typedef struct Info{
   char uri[1000];
   char segment_uri[1000];
   char segment_name[512];
@@ -173,18 +176,18 @@ typedef struct {
 void *thread_function(void *arg) {
   Info *info = (Info *)arg;
   sem_wait(&semaphore);
-
-  // if in local fs and db shows pending false increment completed and skip downloading
+  // if in local fs and db shows pending false increment completed and skip
+  // downloading
   if (get_segment_status(db, info->segment_name) == 0) {
     __sync_fetch_and_add(&completed, 1);
     sem_post(&semaphore);
     free(info);
-    printf("\rFound Cache %s", info->segment_name);
+    printf("\n\e[1;34mFound Cache %s\e[0m", info->segment_name);
     return NULL;
   }
 
   int success = 0;
-  int retries = 5;
+  int retries = 10;
   char path[1000];
   snprintf(path, sizeof(path), "%s/%s", info->folder_name, info->segment_name);
   while (retries > 0) {
@@ -279,12 +282,13 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
 
   int added = 0;
 
-  char result[256];
+  char path_to_db[256];
   char *home = getenv("HOME");
 
-  snprintf(result, sizeof(result), "%s/.local/share/spd/cache.db", home);
+  snprintf(path_to_db, sizeof(path_to_db), "%s/.local/share/spd/cache.db",
+           home);
 
-  int rc = sqlite3_open(result, &db);
+  int rc = sqlite3_open(path_to_db, &db);
 
   if (rc != SQLITE_OK) {
     fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));

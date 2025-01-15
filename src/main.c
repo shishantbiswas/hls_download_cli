@@ -22,12 +22,12 @@ void show_version() { printf("Version 0.1.0\n"); }
 
 void yt(char *uri, char *resolution) {
   if (uri == NULL) {
-    printf("%s", "Example: main yt https://www.youtube.com/watch?v=id\n");
+    printf("%s", "Example: spd yt https://www.youtube.com/watch?v=id\n");
     printf("%s", "URL is missing!\n");
     return;
   } else if (resolution != NULL) {
-    if (strcmp(resolution, "720") == 1 || strcmp(resolution, "1080") == 1) {
-      printf("%s\n", "Resolution can only be 720 or 1080");
+    if (strcmp(resolution, "360") == 1 || strcmp(resolution, "720") == 1 || strcmp(resolution, "1080") == 1) {
+      printf("%s\n", "Resolution can only be 360, 720 or 1080\nDefault is 480");
       return;
     }
   }
@@ -55,7 +55,7 @@ void yt(char *uri, char *resolution) {
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     show_help();
-    return 1;
+    return 0;
   }
   char *command = argv[1];
   char *uri = argv[2];
@@ -84,7 +84,7 @@ int main(int argc, char *argv[]) {
   } else {
     printf("Unknown command: %s\n", command);
     show_help();
-    return 1;
+    return 0;
   }
 
   return 0;

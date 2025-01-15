@@ -117,6 +117,10 @@ static size_t mem_cb(void *contents, size_t size, size_t nmemb, void *userp) {
 */
 char *fetch(const char *url, MemoryStruct *chunk) {
   CURL *curl = curl_easy_init();
+  if (!curl) {
+    fprintf(stderr, "Failed to initialize CURL\n");
+    return NULL;
+  }
   CURLcode response;
 
   curl_global_init(CURL_GLOBAL_ALL);
@@ -159,45 +163,63 @@ char *random_string(int limit) {
 }
 
 int download_file(char *uri, char *filename) {
-  CURL *curl;
+  if (!uri || !filename) {
+    fprintf(stderr, "Invalid parameters\n");
+    return 1;
+  }
+
+  if (strlen(filename) >= 512) {
+    fprintf(stderr, "Filename too long\n");
+    return 1;
+  }
+
+  if (strstr(filename, "..") != NULL) {
+    fprintf(stderr, "Invalid filename\n");
+    return 1;
+  }
+
   FILE *fp;
   CURLcode res;
+
+  CURL *curl = curl_easy_init();
+  if (!curl) {
+    fprintf(stderr, "Failed to initialize CURL\n");
+    return 1;
+  }
 
   fp = fopen(filename, "wb");
   if (!fp) {
     perror("Failed to create file");
+    curl_easy_cleanup(curl);
     return 1;
   }
-  curl = curl_easy_init();
-  if (curl) {
-    remove_invisible_chars(uri);
+  remove_invisible_chars(uri);
 
-    curl_easy_setopt(curl, CURLOPT_URL, uri);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
-    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
+  curl_easy_setopt(curl, CURLOPT_URL, uri);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+  curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 25L);
 
-    res = curl_easy_perform(curl);
-    if (res != CURLE_OK) {
-      fprintf(stderr, "Download failed: %s\n", curl_easy_strerror(res));
-      curl_easy_cleanup(curl);
-      fclose(fp);
-      return 1;
-    }
-
-    long response_code;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
-    if (response_code != 200) {
-      fprintf(stderr, "HTTP error: %ld\n", response_code);
-      curl_easy_cleanup(curl);
-      fclose(fp);
-      return 1;
-    }
-
+  res = curl_easy_perform(curl);
+  if (res != CURLE_OK) {
+    fprintf(stderr, "\n\e[31mDownload failed: %s\e[0m", curl_easy_strerror(res));
     curl_easy_cleanup(curl);
     fclose(fp);
+    return 1;
   }
+
+  long response_code;
+  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
+  if (response_code != 200) {
+    fprintf(stderr, "HTTP error: %ld\n", response_code);
+    curl_easy_cleanup(curl);
+    fclose(fp);
+    return 1;
+  }
+
+  curl_easy_cleanup(curl);
+  fclose(fp);
 
   return 0;
 }
@@ -214,7 +236,8 @@ void delete_directory(const char *path) {
   }
 
   while ((entry = readdir(dir)) != NULL) {
-    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0 ||
+        strcmp(entry->d_name, ".DS_Store") == 0)
       continue;
 
     snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
