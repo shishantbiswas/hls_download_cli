@@ -46,6 +46,7 @@ int init_db() {
     CREATE TABLE IF NOT EXISTS segments (\
         pending BOOLEAN NOT NULL DEFAULT 0,\
         name TEXT NOT NULL,\
+        video_name TEXT NOT NULL,\
         segment_uri TEXT NOT NULL,\
         video_uri TEXT NOT NULL,\
         PRIMARY KEY (video_uri, name),\
@@ -92,6 +93,7 @@ int rm_db() {
       perror("Error deleting file");
     }
   }
+  init_db();
   return 0;
 }
 
@@ -114,7 +116,6 @@ int add_video(char *name, char *uri, char *video_uri) {
     sqlite3_close(db);
     return 1;
   }
-  sqlite3_busy_timeout(db, 5000);
 
   sqlite3_stmt *stmt;
   rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -192,7 +193,6 @@ char *get_video_by_uri(char *uri) {
     fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
     return NULL;
   }
-  sqlite3_busy_timeout(db, 5000);
 
   sqlite3_bind_text(stmt, 1, uri, -1, SQLITE_STATIC);
 
@@ -239,7 +239,6 @@ char *get_video_value_by_uri(char *uri) {
     sqlite3_close(db);
     return NULL;
   }
-  sqlite3_busy_timeout(db, 5000);
 
   const char *sql = "SELECT value FROM videos WHERE uri = ?;";
   sqlite3_stmt *stmt;
@@ -288,7 +287,6 @@ int rm_video(char *uri) {
     sqlite3_close(db);
     return 1;
   }
-  sqlite3_busy_timeout(db, 5000);
 
   rc = sqlite3_exec(db, "PRAGMA foreign_keys = ON;", 0, 0, &err_msg);
   if (rc != SQLITE_OK) {
@@ -337,10 +335,11 @@ int rm_video(char *uri) {
 /*
     Add a segment to the video
 */
-int add_segment_to_video(sqlite3 *db, char *uri, char *segment_name,
+int add_segment_to_video(sqlite3 *db, char *uri, char *name, char *video_name,
                          char *og_uri) {
-  const char *sql = "INSERT INTO segments (name,pending,video_uri,segment_uri) "
-                    "VALUES (?,?,?,?);";
+  const char *sql =
+      "INSERT INTO segments (name,pending,video_uri,video_name,segment_uri) "
+      "VALUES (?,?,?,?,?);";
   char *err_msg = NULL;
 
   sqlite3_stmt *stmt;
@@ -349,7 +348,7 @@ int add_segment_to_video(sqlite3 *db, char *uri, char *segment_name,
     fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
     return 1;
   }
-  rc = sqlite3_bind_text(stmt, 1, segment_name, -1, SQLITE_STATIC);
+  rc = sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
   if (rc != SQLITE_OK) {
     fprintf(stderr, "Failed to bind segment name: %s\n", sqlite3_errmsg(db));
     sqlite3_finalize(stmt);
@@ -367,7 +366,13 @@ int add_segment_to_video(sqlite3 *db, char *uri, char *segment_name,
     sqlite3_finalize(stmt);
     return 1;
   }
-  rc = sqlite3_bind_text(stmt, 4, uri, -1, SQLITE_STATIC);
+  rc = sqlite3_bind_text(stmt, 4, video_name, -1, SQLITE_STATIC);
+  if (rc != SQLITE_OK) {
+    fprintf(stderr, "Failed to bind uri: %s\n", sqlite3_errmsg(db));
+    sqlite3_finalize(stmt);
+    return 1;
+  }
+  rc = sqlite3_bind_text(stmt, 5, uri, -1, SQLITE_STATIC);
   if (rc != SQLITE_OK) {
     fprintf(stderr, "Failed to bind uri: %s\n", sqlite3_errmsg(db));
     sqlite3_finalize(stmt);
@@ -387,40 +392,59 @@ int add_segment_to_video(sqlite3 *db, char *uri, char *segment_name,
 /*
     Get the segment status
 */
-int get_segment_status(sqlite3 *db, char *name) {
+int get_segment_status(sqlite3 *db, char *name, char *video_uri,
+                       char *segment_uri, char *video_name) {
   char *err_msg = NULL;
 
-  const char *sql = "SELECT pending FROM segments WHERE name = ?;";
+  // Add error checking for NULL parameters
+  if (!db || !name || !video_uri || !segment_uri || !video_name) {
+    fprintf(stderr, "Invalid parameters passed to get_segment_status\n");
+    return -1;
+  }
+
+  const char *sql = "SELECT pending FROM segments WHERE segment_uri = ? AND "
+                    "video_uri = ? AND name = ? AND video_name = ?;";
   sqlite3_stmt *stmt;
   int pending = -1;
+
   int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
   if (rc != SQLITE_OK) {
-    fprintf(stderr, "SQL error: %s\n", err_msg);
-    sqlite3_free(err_msg);
-    return 1;
+    fprintf(stderr, "SQL prepare error: %s\n",
+            sqlite3_errmsg(db)); // Use sqlite3_errmsg instead
+    return -1;                   // Return -1 for error instead of 1
   }
-  sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
+
+  // Add error checking for bindings
+  if (sqlite3_bind_text(stmt, 1, segment_uri, -1, SQLITE_STATIC) != SQLITE_OK ||
+      sqlite3_bind_text(stmt, 2, video_uri, -1, SQLITE_STATIC) != SQLITE_OK ||
+      sqlite3_bind_text(stmt, 3, name, -1, SQLITE_STATIC) != SQLITE_OK ||
+      sqlite3_bind_text(stmt, 4, video_name, -1, SQLITE_STATIC) != SQLITE_OK) {
+    fprintf(stderr, "Binding error: %s\n", sqlite3_errmsg(db));
+    sqlite3_finalize(stmt);
+    return -1;
+  }
 
   rc = sqlite3_step(stmt);
   if (rc == SQLITE_ROW) {
     pending = sqlite3_column_int(stmt, 0);
   } else if (rc == SQLITE_DONE) {
-    pending = -1;
+    pending = -1; // No row found
   } else {
-    fprintf(stderr, "Failed to execute statement: %s\n", sqlite3_errmsg(db));
+    fprintf(stderr, "Query execution error: %s\n", sqlite3_errmsg(db));
+    pending = -1;
   }
-  sqlite3_finalize(stmt);
 
+  sqlite3_finalize(stmt);
   return pending;
 }
 
 /*
     Complete the segment status
 */
-int complete_segment_status(sqlite3 *db, char *name) {
+int complete_segment_status(sqlite3 *db, char *segment_uri,char *name) {
   char *home = getenv("HOME");
   char result[256];
-  char *sql = "UPDATE segments SET pending = 0 WHERE name = ?;";
+  char *sql = "UPDATE segments SET pending = 0 WHERE segment_uri = ? AND name = ?;";
 
   // sqlite3_busy_timeout(db, 5000);
 
@@ -431,7 +455,13 @@ int complete_segment_status(sqlite3 *db, char *name) {
     return 1;
   }
 
-  rc = sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
+  rc = sqlite3_bind_text(stmt, 1, segment_uri, -1, SQLITE_STATIC);
+  if (rc != SQLITE_OK) {
+    fprintf(stderr, "Failed to bind segment_uri: %s\n", sqlite3_errmsg(db));
+    sqlite3_finalize(stmt);
+    return 1;
+  }
+  rc = sqlite3_bind_text(stmt, 2, name, -1, SQLITE_STATIC);
   if (rc != SQLITE_OK) {
     fprintf(stderr, "Failed to bind name: %s\n", sqlite3_errmsg(db));
     sqlite3_finalize(stmt);

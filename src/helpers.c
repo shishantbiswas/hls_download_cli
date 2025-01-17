@@ -199,11 +199,15 @@ int download_file(char *uri, char *filename) {
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
   curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
   curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 25L);
+  // curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 25L);
+  // curl_easy_setopt(curl, CURLOPT_TIMEOUT, 25L);
+  curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 50L);
+  curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 30L);
 
   res = curl_easy_perform(curl);
   if (res != CURLE_OK) {
-    fprintf(stderr, "\n\e[31mDownload failed: %s\e[0m", curl_easy_strerror(res));
+    fprintf(stderr, "\n\e[31mDownload failed: %s\e[0m",
+            curl_easy_strerror(res));
     curl_easy_cleanup(curl);
     fclose(fp);
     return 1;

@@ -157,16 +157,15 @@ void *loading_indicator(void *arg) {
   while (completed < total) {
     int percentage = (int)(((float)completed / total) * 100);
     printf("\r[%s] Progress: %d %% %d/%d completed",
-    percentage % 2 == 0 ? "/" : "\\"
-    , percentage, completed, total);
+           completed % 2 == 0 ? "/" : "\\", percentage, completed, total);
     fflush(stdout);
-    usleep(20000);
+    usleep(200000);
   }
   printf("\nAll tasks completed!\n");
   return NULL;
 }
 
-typedef struct Info{
+typedef struct Info {
   char uri[1000];
   char segment_uri[1000];
   char segment_name[512];
@@ -178,11 +177,12 @@ void *thread_function(void *arg) {
   sem_wait(&semaphore);
   // if in local fs and db shows pending false increment completed and skip
   // downloading
-  if (get_segment_status(db, info->segment_name) == 0) {
+  if (get_segment_status(db, info->segment_name, info->uri, info->segment_uri,
+                         info->folder_name) == 0) {
     __sync_fetch_and_add(&completed, 1);
     sem_post(&semaphore);
     free(info);
-    printf("\n\e[1;34mFound Cache %s\e[0m", info->segment_name);
+    printf("\n\e[34mFound Cache %s\e[0m", info->segment_name);
     return NULL;
   }
 
@@ -194,11 +194,12 @@ void *thread_function(void *arg) {
     int result = download_file(info->segment_uri, path);
     if (result != 0) {
       retries--;
-      printf("Retrying... (%d retries left)\n", retries);
+      printf("\nRetrying... (%d retries left)\n", retries);
       continue;
     }
     success = 1;
-    int lol = complete_segment_status(db, info->segment_name);
+    int lol =
+        complete_segment_status(db, info->segment_uri, info->segment_name);
 
     break;
   }
@@ -276,7 +277,7 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
   }
 
   pthread_t threads[total];
-  sem_init(&semaphore, 0, 3);
+  sem_init(&semaphore, 0, 8);
   pthread_t loader_thread;
   pthread_create(&loader_thread, NULL, loading_indicator, NULL);
 
@@ -310,9 +311,10 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
         exit(EXIT_FAILURE);
       }
 
-      if (get_segment_status(db, seg_name) == -1) { // doesn't exists in cache
+      if (get_segment_status(db, seg_name, og_uri, complete_seg_uri,
+                             folder_name) == -1) { // doesn't exists in cache
 
-        add_segment_to_video(db, seg_uri, seg_name, og_uri);
+        add_segment_to_video(db, seg_uri, seg_name, folder_name, og_uri);
         strncpy(info->uri, uri, sizeof(info->uri) - 1);
         strncpy(info->segment_uri, complete_seg_uri,
                 sizeof(info->segment_uri) - 1);
@@ -328,9 +330,7 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
         free(complete_seg_uri);
         pthread_create(&threads[added], NULL, thread_function, info);
         added++;
-      } else
-      // if (get_segment_status(db, seg_name) == 1)
-      { // exists but pending
+      } else      { // exists but pending
 
         strncpy(info->uri, uri, sizeof(info->uri) - 1);
         strncpy(info->segment_uri, complete_seg_uri,
@@ -348,11 +348,6 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
         pthread_create(&threads[added], NULL, thread_function, info);
         added++;
       }
-      // else if (get_segment_status(db, seperated[i]) == 0) { // exists and
-      // complete
-      //   total--;
-      //   continue;
-      // }
       free(seg_uri);
       free(seg_name);
     }
@@ -375,17 +370,17 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
            folder_name);
 
   if (failed > 0) {
-    printf("\nFailed to download all segment\nRerun the command to download "
-           "missing segment",
-           "");
+    printf("\nFailed to download all segment\n \
+    Rerun the command to download missing segment");
     return 1;
   }
 
   int success = ffmpeg_merge(folder_name, output_file);
   if (success == 0) {
+    printf("\n\e[34mCleaning Up...\e[0m", "");
     rm_video(uri);
-    printf("%s", "Merge Successful\n");
     delete_directory(folder_name);
+    printf("\n\e[32mMerge Successful\nVideo Saved at %s \e[0m\n", output_file);
   }
   return 0;
 }

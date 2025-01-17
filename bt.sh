@@ -2,7 +2,7 @@ rm -rf lol daydream
 make clean
 make
 clear
-./build/spd rm_db
+./build/spd rm
 ./build/spd init
 sleep 1
 ./build/spd vd http://localhost:3000/master.m3u8
