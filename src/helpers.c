@@ -94,7 +94,7 @@ int start_with(const char *pre, const char *str) {
 /*
     The memory callback function used by libcurl
 */
-static size_t mem_cb(void *contents, size_t size, size_t nmemb, void *userp) {
+size_t mem_cb(void *contents, size_t size, size_t nmemb, void *userp) {
   size_t realsize = size * nmemb;
   MemoryStruct *mem = (MemoryStruct *)userp;
 
@@ -206,7 +206,7 @@ int download_file(char *uri, char *filename) {
 
   res = curl_easy_perform(curl);
   if (res != CURLE_OK) {
-    fprintf(stderr, "\n\e[31mDownload failed: %s\e[0m",
+    fprintf(stderr, "\n\033[31mDownload failed: %s\033[0m",
             curl_easy_strerror(res));
     curl_easy_cleanup(curl);
     fclose(fp);

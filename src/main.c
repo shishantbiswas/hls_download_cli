@@ -41,7 +41,7 @@ void yt(char *uri, char *resolution) {
 
   char command[1000];
   snprintf(command, sizeof(command),
-           "yt-dlp -S \"res:%s\" -f mp4 -N 4 -o \"%s/%(title)s.%(ext)s\" %s",
+           "yt-dlp -S \"res:%s\" -f mp4 -N 4 -o \"%s/%%(title)s.%%(ext)s\" %s",
            resolution != NULL ? resolution : "480", home != NULL ? result : "",
            uri);
 
@@ -61,7 +61,7 @@ void *test() {
            home);
 
   sqlite3 *db;
-  char *err_msg = NULL;
+  // char *err_msg = NULL;
 
   int rc = sqlite3_open(path_to_db, &db);
 
@@ -77,6 +77,7 @@ void *test() {
   int lol = get_segment_status(db,"name","video_uri","uri","og_uri");
   printf("%d",lol);
   sqlite3_close(db);
+  return NULL;
 }
 
 int main(int argc, char *argv[]) {

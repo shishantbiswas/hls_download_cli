@@ -14,7 +14,7 @@ char *fetch(const char *url, MemoryStruct *chunk);
 char **split(char *str, char *delim);
 void free_split(char **arr);
 int start_with(const char *pre, const char *str);
-static size_t mem_cb(void *contents, size_t size, size_t nmemb, void *userp);
+size_t mem_cb(void *contents, size_t size, size_t nmemb, void *userp);
 char *random_string(int limit);
 int download_file(char *uri, char *filename);
 void delete_directory(const char *path);

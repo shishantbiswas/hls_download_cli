@@ -106,7 +106,6 @@ int add_video(char *name, char *uri, char *video_uri) {
   char *sql = "INSERT INTO videos (name,uri,value) VALUES (?, ?, ?);";
 
   sqlite3 *db;
-  char *err_msg = NULL;
 
   snprintf(result, sizeof(result), "%s/.local/share/spd/cache.db", home);
   int rc = sqlite3_open(result, &db);
@@ -175,7 +174,6 @@ char *get_video_by_uri(char *uri) {
            home);
 
   sqlite3 *db;
-  char *err_msg = NULL;
 
   int rc = sqlite3_open(path_to_db, &db);
 
@@ -230,7 +228,6 @@ char *get_video_value_by_uri(char *uri) {
            home);
 
   sqlite3 *db;
-  char *err_msg = NULL;
 
   int rc = sqlite3_open(path_to_db, &db);
 
@@ -340,7 +337,6 @@ int add_segment_to_video(sqlite3 *db, char *uri, char *name, char *video_name,
   const char *sql =
       "INSERT INTO segments (name,pending,video_uri,video_name,segment_uri) "
       "VALUES (?,?,?,?,?);";
-  char *err_msg = NULL;
 
   sqlite3_stmt *stmt;
   int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -394,7 +390,6 @@ int add_segment_to_video(sqlite3 *db, char *uri, char *name, char *video_name,
 */
 int get_segment_status(sqlite3 *db, char *name, char *video_uri,
                        char *segment_uri, char *video_name) {
-  char *err_msg = NULL;
 
   // Add error checking for NULL parameters
   if (!db || !name || !video_uri || !segment_uri || !video_name) {
@@ -442,11 +437,7 @@ int get_segment_status(sqlite3 *db, char *name, char *video_uri,
     Complete the segment status
 */
 int complete_segment_status(sqlite3 *db, char *segment_uri,char *name) {
-  char *home = getenv("HOME");
-  char result[256];
   char *sql = "UPDATE segments SET pending = 0 WHERE segment_uri = ? AND name = ?;";
-
-  // sqlite3_busy_timeout(db, 5000);
 
   sqlite3_stmt *stmt;
   int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);

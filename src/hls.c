@@ -114,7 +114,7 @@ void run_hls_command(char *uri, char *video_name) {
     return;
   }
   MemoryStruct chunk = {
-      .memory = malloc(0),
+      .memory = malloc(1),
       .size = 0,
   };
   char *response = fetch(uri, &chunk);
@@ -152,8 +152,7 @@ int total = 0;
 sem_t semaphore;
 sqlite3 *db;
 
-void *loading_indicator(void *arg) {
-
+void *loading_indicator() {
   while (completed < total) {
     int percentage = (int)(((float)completed / total) * 100);
     printf("\r[%s] Progress: %d %% %d/%d completed",
@@ -181,14 +180,14 @@ void *thread_function(void *arg) {
                          info->folder_name) == 0) {
     __sync_fetch_and_add(&completed, 1);
     sem_post(&semaphore);
+    printf("\n\033[34mFound Cache %s\033[0m", info->segment_name);
     free(info);
-    printf("\n\e[34mFound Cache %s\e[0m", info->segment_name);
     return NULL;
   }
 
   int success = 0;
   int retries = 10;
-  char path[1000];
+  char path[1024];
   snprintf(path, sizeof(path), "%s/%s", info->folder_name, info->segment_name);
   while (retries > 0) {
     int result = download_file(info->segment_uri, path);
@@ -198,8 +197,7 @@ void *thread_function(void *arg) {
       continue;
     }
     success = 1;
-    int lol =
-        complete_segment_status(db, info->segment_uri, info->segment_name);
+    complete_segment_status(db, info->segment_uri, info->segment_name);
 
     break;
   }
@@ -217,7 +215,7 @@ void *thread_function(void *arg) {
 
 int prepare_download(char *uri, char *og_uri, char *video_name) {
   MemoryStruct chunk = {
-      .memory = malloc(0),
+      .memory = malloc(1),
       .size = 0,
   };
   char *response = fetch(uri, &chunk);
@@ -377,10 +375,10 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
 
   int success = ffmpeg_merge(folder_name, output_file);
   if (success == 0) {
-    printf("\n\e[34mCleaning Up...\e[0m", "");
+    printf("\n\033[34mCleaning Up...\033[0m");
     rm_video(uri);
     delete_directory(folder_name);
-    printf("\n\e[32mMerge Successful\nVideo Saved at %s \e[0m\n", output_file);
+    printf("\n\033[32mMerge Successful\nVideo Saved at %s \033[0m\n", output_file);
   }
   return 0;
 }
