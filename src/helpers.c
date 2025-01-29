@@ -202,7 +202,7 @@ int download_file(char *uri, char *filename) {
   // curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 25L);
   // curl_easy_setopt(curl, CURLOPT_TIMEOUT, 25L);
   curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 50L);
-  curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 30L);
+  curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 10L);
 
   res = curl_easy_perform(curl);
   if (res != CURLE_OK) {
