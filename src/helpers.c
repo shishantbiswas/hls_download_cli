@@ -113,7 +113,7 @@ size_t mem_cb(void *contents, size_t size, size_t nmemb, void *userp) {
 
 /*
     A generic fetch function which return the body
-    Needs to be Freed manually or free the MemoryStruct
+    Needs to be Freed manually or free the MemoryStruct Pointer
 */
 char *fetch(const char *url, MemoryStruct *chunk) {
   CURL *curl = curl_easy_init();
@@ -128,8 +128,15 @@ char *fetch(const char *url, MemoryStruct *chunk) {
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, mem_cb);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)chunk);
   curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 25L);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT, 25L);
+  curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 50L);
+  curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 10L);
+
   response = curl_easy_perform(curl);
   if (response != CURLE_OK) {
+    curl_easy_cleanup(curl);
+    curl_global_cleanup();
     fprintf(stderr, "curl_easy_perform() failed: %s\n",
             curl_easy_strerror(response));
     return NULL;
@@ -162,6 +169,7 @@ char *random_string(int limit) {
   return result;
 }
 
+/* download a file using http url*/
 int download_file(char *uri, char *filename) {
   if (!uri || !filename) {
     fprintf(stderr, "Invalid parameters\n");
@@ -199,8 +207,6 @@ int download_file(char *uri, char *filename) {
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
   curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
   curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-  // curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 25L);
-  // curl_easy_setopt(curl, CURLOPT_TIMEOUT, 25L);
   curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 50L);
   curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 10L);
 
@@ -228,6 +234,7 @@ int download_file(char *uri, char *filename) {
   return 0;
 }
 
+/* delete folder recursively */
 void delete_directory(const char *path) {
   struct dirent *entry;
   char full_path[1024];
@@ -248,7 +255,7 @@ void delete_directory(const char *path) {
 
     if (stat(full_path, &path_stat) == 0) {
       if (S_ISDIR(path_stat.st_mode)) {
-        delete_directory(full_path); // Recursive call for subdirectory
+        delete_directory(full_path);
       } else {
         if (unlink(full_path) != 0) {
           perror("unlink");
@@ -261,5 +268,13 @@ void delete_directory(const char *path) {
 
   if (rmdir(path) != 0) {
     perror("rmdir");
+  }
+}
+
+/* Removes query/searchparams from the URL */
+void remove_query_params(char *url) {
+  char *qmark = strchr(url, '?');
+  if (qmark) {
+    *qmark = '\0';
   }
 }

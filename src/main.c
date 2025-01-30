@@ -18,7 +18,7 @@ void show_help() {
   printf("  yt  Download YouTube video\n");
 }
 
-void show_version() { printf("Version 0.1.3\n"); }
+void show_version() { printf("Version 0.1.4\n"); }
 
 void yt(char *uri, char *resolution) {
   if (uri == NULL) {
@@ -53,31 +53,9 @@ void yt(char *uri, char *resolution) {
   }
 }
 
-void *test() {
-  char *home = getenv("HOME");
-  char path_to_db[256];
-
-  snprintf(path_to_db, sizeof(path_to_db), "%s/.local/share/spd/cache.db",
-           home);
-
-  sqlite3 *db;
-  // char *err_msg = NULL;
-
-  int rc = sqlite3_open(path_to_db, &db);
-
-  if (rc != SQLITE_OK) {
-    fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return NULL;
-  }
-
-// add_video("name","uri","video_uri");
-  // add_segment_to_video(db,"uri","name","video_uri","og_uri");
-// 
-  int lol = get_segment_status(db,"name","video_uri","uri","og_uri");
-  printf("%d",lol);
-  sqlite3_close(db);
-  return NULL;
+void dl(char *uri, char *addition_args) {
+  printf("%s%s",uri,addition_args);
+  return;
 }
 
 int main(int argc, char *argv[]) {
@@ -94,11 +72,11 @@ int main(int argc, char *argv[]) {
   } else if (strcmp(command, "-v") == 0 || strcmp(command, "-version") == 0) {
     show_version();
   } else if (strcmp(command, "vd") == 0) {
-    run_hls_command(uri, addition_args);
+    hls_command(uri, addition_args);
   } else if (strcmp(command, "yt") == 0) {
     yt(uri, addition_args);
   } else if (strcmp(command, "dl") == 0) {
-    test();
+    dl(uri, addition_args);
   } else if (strcmp(command, "init") == 0) {
     init_db();
   } else if (strcmp(command, "rm") == 0) {

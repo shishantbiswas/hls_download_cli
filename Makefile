@@ -1,5 +1,6 @@
 CC = gcc
-CFLAGS = -Iinclude -Wall -Wextra -Werror -pedantic -D_GNU_SOURCE
+CFLAGS = -Iinclude
+#  -Wall -Wextra -Werror -pedantic -D_GNU_SOURCE
 SRC = src/main.c src/helpers.c src/hls.c src/db.c
 OBJ = $(SRC:src/%.c=build/%.o)
 OUT = build/spd

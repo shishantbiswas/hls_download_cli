@@ -37,6 +37,8 @@ int init_db() {
     sqlite3_close(db);
     return 1;
   }
+  sqlite3_busy_timeout(db, 10000);
+  sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, 0, NULL);
 
   const char *sql = "\
     CREATE TABLE IF NOT EXISTS videos (\
@@ -116,6 +118,9 @@ int add_video(char *name, char *uri, char *video_uri) {
     return 1;
   }
 
+  sqlite3_busy_timeout(db, 10000);
+  sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, 0, NULL);
+
   sqlite3_stmt *stmt;
   rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
   if (rc != SQLITE_OK) {
@@ -159,16 +164,9 @@ int add_video(char *name, char *uri, char *video_uri) {
 /*
     Get the video name/random name by the uri
 */
-char *get_video_by_uri(char *uri) {
+void get_video_by_uri(char *uri, char *result) {
   char *home = getenv("HOME");
   char path_to_db[256];
-  char *result = malloc(128);
-  if (result == NULL) {
-    printf("Memory allocation failed");
-    return NULL;
-  }
-
-  result[0] = '\0';
 
   snprintf(path_to_db, sizeof(path_to_db), "%s/.local/share/spd/cache.db",
            home);
@@ -180,8 +178,11 @@ char *get_video_by_uri(char *uri) {
   if (rc != SQLITE_OK) {
     fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
     sqlite3_close(db);
-    return NULL;
+    return;
   }
+
+  sqlite3_busy_timeout(db, 10000);
+  sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, 0, NULL);
 
   const char *sql = "SELECT name FROM videos WHERE uri = ?;";
   sqlite3_stmt *stmt;
@@ -189,7 +190,7 @@ char *get_video_by_uri(char *uri) {
   rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
   if (rc != SQLITE_OK) {
     fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
-    return NULL;
+    return;
   }
 
   sqlite3_bind_text(stmt, 1, uri, -1, SQLITE_STATIC);
@@ -207,7 +208,6 @@ char *get_video_by_uri(char *uri) {
 
   sqlite3_finalize(stmt);
   sqlite3_close(db);
-  return result;
 }
 
 /*
@@ -236,6 +236,9 @@ char *get_video_value_by_uri(char *uri) {
     sqlite3_close(db);
     return NULL;
   }
+
+  sqlite3_busy_timeout(db, 10000);
+  sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, 0, NULL);
 
   const char *sql = "SELECT value FROM videos WHERE uri = ?;";
   sqlite3_stmt *stmt;
@@ -284,6 +287,8 @@ int rm_video(char *uri) {
     sqlite3_close(db);
     return 1;
   }
+  sqlite3_busy_timeout(db, 10000);
+  sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, 0, NULL);
 
   rc = sqlite3_exec(db, "PRAGMA foreign_keys = ON;", 0, 0, &err_msg);
   if (rc != SQLITE_OK) {
@@ -380,7 +385,6 @@ int add_segment_to_video(sqlite3 *db, char *uri, char *name, char *video_name,
     sqlite3_finalize(stmt);
     return 1;
   }
-
   sqlite3_finalize(stmt);
   return 0;
 }
@@ -436,8 +440,9 @@ int get_segment_status(sqlite3 *db, char *name, char *video_uri,
 /*
     Complete the segment status
 */
-int complete_segment_status(sqlite3 *db, char *segment_uri,char *name) {
-  char *sql = "UPDATE segments SET pending = 0 WHERE segment_uri = ? AND name = ?;";
+int complete_segment_status(sqlite3 *db, char *segment_uri, char *name) {
+  char *sql =
+      "UPDATE segments SET pending = 0 WHERE segment_uri = ? AND name = ?;";
 
   sqlite3_stmt *stmt;
   int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
