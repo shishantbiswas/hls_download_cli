@@ -1,3 +1,4 @@
+#include "hls.h"
 #include "db.h"
 #include "helpers.h"
 #include <pthread.h>
@@ -9,13 +10,6 @@
 #include <unistd.h>
 
 #define TOTAL_CONCURRENT_CONNECTION 5
-
-int prepare_download(char *uri, char *og_uri, char *video_name);
-char *make_complete_url(char *original_url, char *segment);
-char *make_segment_from_url(char *original_url);
-int merge_file(char *path, char *segment_name);
-int merge_file_manifest(char *path, char *segment_name);
-int validate_hls_url(char *url, char *output);
 
 char *parse_hls_manifest(char *manifest) {
   char *copy = strdup(manifest);
@@ -101,8 +95,7 @@ int ffmpeg_merge(char *folder_name, char *output_file) {
   }
   char command[1024];
   snprintf(command, sizeof(command),
-           //  "ffmpeg -f concat -safe 0 -i ./%s/merge_file.txt -c copy %s",
-           "ffmpeg -i ./%s/merge_file.m3u8 -c copy %s", folder_name,
+           "ffmpeg -allowed_extensions ALL -i ./%s/merge_file.m3u8 -c copy %s", folder_name,
            output_file);
 
   int result = system(command);
@@ -168,13 +161,13 @@ volatile int completed = 0;
 volatile int failed = 0;
 int total = 0;
 sem_t semaphore;
-sqlite3 *db;
+extern sqlite3 *db;
 
 void *loading_indicator() {
   while (completed < total) {
     int percentage = (int)(((float)completed / total) * 100);
-    printf("\r[%s] Progress: %d%% %d/%d",
-           completed % 2 == 0 ? "/" : "\\", percentage, completed, total);
+    printf("\r[%s] Progress: %d%% %d/%d", completed % 2 == 0 ? "/" : "\\",
+           percentage, completed, total);
     fflush(stdout);
     usleep(200000);
   }
@@ -182,23 +175,15 @@ void *loading_indicator() {
   return NULL;
 }
 
-typedef struct Info {
-  char uri[1024];
-  char segment_uri[1024];
-  char segment_name[512];
-  char folder_name[512];
-} Info;
-
 void *thread_function(void *arg) {
   Info *info = (Info *)arg;
   sem_wait(&semaphore);
-  // if in db segment pending is false increment completed and skip
-  remove_query_params(info->segment_name);
-  if (get_segment_status(db, info->segment_name, info->uri, info->segment_uri,
+  char *segment_name = info->segment_name;
+  if (get_segment_status(segment_name, info->uri, info->segment_uri,
                          info->folder_name) == 0) {
     __sync_fetch_and_add(&completed, 1);
     sem_post(&semaphore);
-    printf("\n\033[34mFound Cache %s\033[0m", info->segment_name);
+    printf("\n\033[34mFound Cache %s\033[0m", segment_name);
     free(info);
     return NULL;
   }
@@ -206,7 +191,7 @@ void *thread_function(void *arg) {
   int success = 0;
   int retries = 5;
   char path[1024];
-  snprintf(path, sizeof(path), "%s/%s", info->folder_name, info->segment_name);
+  snprintf(path, sizeof(path), "%s/%s", info->folder_name, segment_name);
   while (retries > 0) {
     int result = download_file(info->segment_uri, path);
     if (result != 0) {
@@ -215,7 +200,7 @@ void *thread_function(void *arg) {
       continue;
     }
     success = 1;
-    complete_segment_status(db, info->segment_uri, info->segment_name);
+    complete_segment_status(info->segment_uri, segment_name);
 
     break;
   }
@@ -266,22 +251,24 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
   char cached_video[256];
   cached_video[0] = '\0';
 
+  
+
   get_video_by_uri(og_uri, cached_video);
 
-  // if (cached_video != NULL) {
   if (strlen(cached_video) > 0) {
     strcpy(folder_name, cached_video);
   } else {
-    printf("[Cache] Saving selected resolution in cache\n");
-    char *lol = video_name == NULL ? random_string(15) : video_name;
+    printf("[cache] Saving selected resolution in cache\n");
+    char *r_str = random_string(15);
+    char *lol = video_name == NULL ? r_str : video_name;
     strcpy(folder_name, lol);
+    free(r_str);
     int av = add_video(folder_name, og_uri, uri);
     if (av != 0) {
-      printf("[Cache] Failed to save video");
+      printf("[cache] Failed to save video");
       return -1;
     }
   }
-  // done using data from cached_video/get_video_by_uri
 
   snprintf(path, sizeof(path), "%s/merge_file.m3u8", folder_name);
   if (stat(path, &st) == 0) {
@@ -297,11 +284,11 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
   int merge_file_errors = 0;
   for (int i = 0; merge_file_temp[i] != NULL; i++) {
     remove_invisible_chars(merge_file_temp[i]);
-      char *temp = make_segment_from_url(merge_file_temp[i]);
-      remove_invisible_chars(temp);
-      remove_query_params(temp);
-      merge_file_manifest(path, temp);
-      free(temp);
+    char *temp = make_segment_from_url(merge_file_temp[i]);
+    remove_invisible_chars(temp);
+    remove_query_params(temp);
+    merge_file_manifest(path, temp);
+    free(temp);
     if (!start_with("#EXT", seperated[i]) && strlen(seperated[i]) > 0) {
       total++;
     }
@@ -322,22 +309,8 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
 
   int added = 0;
 
-  char path_to_db[256];
-  char *home = getenv("HOME");
-
-  snprintf(path_to_db, sizeof(path_to_db), "%s/.local/share/spd/cache.db",
-           home);
-
-  if (sqlite3_open(path_to_db, &db) != SQLITE_OK) {
-    fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return -1;
-  }
-  sqlite3_busy_timeout(db, 10000);
-  sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, 0, NULL);
-
-  printf("\n\033[34m[Download] Starting download with %d concurrent \
-  threads\033[0m\n",
+  printf("\n\033[34m[Download] Starting download with %d "
+          "concurrent threads\033[0m\n",
          TOTAL_CONCURRENT_CONNECTION);
 
   for (int i = 0; seperated[i] != NULL; i++) {
@@ -346,7 +319,7 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
       char *complete_seg_uri = make_complete_url(uri, seperated[i]);
       char *seg_name = make_segment_from_url(seperated[i]);
       char *seg_uri = make_complete_url(og_uri, seperated[i]);
-
+      remove_query_params(seg_name);
       Info *info = malloc(sizeof(Info));
       if (info == NULL) {
         perror("malloc failed");
@@ -362,11 +335,9 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
       info->segment_uri[sizeof(info->segment_uri) - 1] = '\0';
       info->segment_name[sizeof(info->segment_name) - 1] = '\0';
 
-
-
-      if (get_segment_status(db, seg_name, og_uri, complete_seg_uri,
+      if (get_segment_status(seg_name, og_uri, complete_seg_uri,
                              folder_name) == -1) { // doesn't exists in cache
-        add_segment_to_video(db, seg_uri, seg_name, folder_name, og_uri);
+        add_segment_to_video(seg_uri, seg_name, folder_name, og_uri);
 
         pthread_create(&threads[added], NULL, thread_function, info);
         added++;
@@ -375,13 +346,11 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
         added++;
       }
 
-
       free(complete_seg_uri);
       free(seg_uri);
       free(seg_name);
     }
   }
-
 
   for (int i = 0; i < total; i++) {
     pthread_join(threads[i], NULL);
@@ -390,18 +359,20 @@ int prepare_download(char *uri, char *og_uri, char *video_name) {
 
   printf("\n\033[34m[Download] Download Complete\033[0m");
 
-  sqlite3_close(db);
   sem_destroy(&semaphore);
   free_split(seperated);
   free(response);
 
   char output_file[256];
+  char *home = getenv("HOME");
 
   snprintf(output_file, sizeof(output_file), "%s/Downloads/%s.mp4", home,
            folder_name);
 
   if (failed > 0) {
-    printf("\nFailed to download all segment\n  Rerun the command to download missing segment"); return 1;
+    printf("\nFailed to download all segment\n  Rerun the command to download "
+           "missing segment");
+    return 1;
   }
 
   // make video
@@ -486,7 +457,6 @@ char *make_segment_from_url(char *original_segment) {
   free(copy);
   return segment;
 }
-
 
 /* AVOID: legacy text based merge file  */
 int merge_file(char *path, char *segment_name) {

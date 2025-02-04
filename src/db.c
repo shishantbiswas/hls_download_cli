@@ -5,40 +5,59 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-/*
-    Initialize the database
-*/
-int init_db() {
+extern sqlite3 *db;
+
+int open_db() {
   char *home = getenv("HOME");
   char result[256];
 
+  char *err_msg = NULL;
+
   if (home != NULL) {
-    snprintf(result, sizeof(result), "%s/.local/share/spd", home);
+    snprintf(result, sizeof(result), "%s/.local/share/spd",
+             home); // db folder path
   } else {
-    printf(
-        "%s",
-        "HOME env is missing\n Try adding `export HOME='/home/you_username'`");
+    printf("HOME env is missing\n"
+           "Try adding `export HOME='/home/you_username'`");
     return 1;
   }
   struct stat st = {0};
 
+  // create db folder path if it doesn't exists
   if (stat(result, &st) == -1) {
     mkdir(result, 0700);
   }
-  snprintf(result, sizeof(result), "%s/.local/share/spd/cache.db", home);
 
-  sqlite3 *db;
-  char *err_msg = NULL;
+  snprintf(result, sizeof(result), "%s/.local/share/spd/cache.db",
+           home); // db file
 
   int rc = sqlite3_open(result, &db);
 
   if (rc != SQLITE_OK) {
     fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
     return 1;
   }
+
   sqlite3_busy_timeout(db, 10000);
-  sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, 0, NULL);
+  rc = sqlite3_exec(db, "PRAGMA foreign_keys = ON;", 0, 0, &err_msg);
+  if (rc != SQLITE_OK) {
+    fprintf(stderr, "foreign key can not be enabled: %s\n", sqlite3_errmsg(db));
+    return 1;
+  }
+  rc = sqlite3_exec(db, "PRAGMA journal_mode = WAL;", 0, 0, &err_msg);
+  if (rc != SQLITE_OK) {
+    fprintf(stderr, "journal_modecan not be enabled: %s\n", sqlite3_errmsg(db));
+    return 1;
+  }
+  return 0;
+}
+
+/*
+    Initialize the database
+*/
+int init_db() {
+
+  char *err_msg = NULL;
 
   const char *sql = "\
     CREATE TABLE IF NOT EXISTS videos (\
@@ -55,17 +74,14 @@ int init_db() {
         FOREIGN KEY (video_uri) REFERENCES videos(uri) ON DELETE CASCADE\
     );";
 
-  sqlite3_exec(db, "PRAGMA foreign_keys = ON;", 0, 0, &err_msg);
-  rc = sqlite3_exec(db, sql, 0, 0, &err_msg);
+  int rc = sqlite3_exec(db, sql, 0, 0, &err_msg);
 
   if (rc != SQLITE_OK) {
     fprintf(stderr, "SQL error: %s\n", err_msg);
     sqlite3_free(err_msg);
-    sqlite3_close(db);
     return 1;
   }
 
-  sqlite3_close(db);
   return 0;
 }
 
@@ -95,7 +111,6 @@ int rm_db() {
       perror("Error deleting file");
     }
   }
-  init_db();
   return 0;
 }
 
@@ -103,26 +118,10 @@ int rm_db() {
     Add a video to the database
 */
 int add_video(char *name, char *uri, char *video_uri) {
-  char *home = getenv("HOME");
-  char result[256];
   char *sql = "INSERT INTO videos (name,uri,value) VALUES (?, ?, ?);";
 
-  sqlite3 *db;
-
-  snprintf(result, sizeof(result), "%s/.local/share/spd/cache.db", home);
-  int rc = sqlite3_open(result, &db);
-
-  if (rc != SQLITE_OK) {
-    fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return 1;
-  }
-
-  sqlite3_busy_timeout(db, 10000);
-  sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, 0, NULL);
-
   sqlite3_stmt *stmt;
-  rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+  int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
   if (rc != SQLITE_OK) {
     fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
     return 1;
@@ -157,7 +156,6 @@ int add_video(char *name, char *uri, char *video_uri) {
   }
 
   sqlite3_finalize(stmt);
-  sqlite3_close(db);
   return 0;
 }
 
@@ -165,29 +163,11 @@ int add_video(char *name, char *uri, char *video_uri) {
     Get the video name/random name by the uri
 */
 void get_video_by_uri(char *uri, char *result) {
-  char *home = getenv("HOME");
-  char path_to_db[256];
-
-  snprintf(path_to_db, sizeof(path_to_db), "%s/.local/share/spd/cache.db",
-           home);
-
-  sqlite3 *db;
-
-  int rc = sqlite3_open(path_to_db, &db);
-
-  if (rc != SQLITE_OK) {
-    fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-  }
-
-  sqlite3_busy_timeout(db, 10000);
-  sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, 0, NULL);
 
   const char *sql = "SELECT name FROM videos WHERE uri = ?;";
   sqlite3_stmt *stmt;
 
-  rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+  int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
   if (rc != SQLITE_OK) {
     fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
     return;
@@ -207,43 +187,23 @@ void get_video_by_uri(char *uri, char *result) {
   }
 
   sqlite3_finalize(stmt);
-  sqlite3_close(db);
 }
 
 /*
     Get the video value/cached video name by the uri
 */
 char *get_video_value_by_uri(char *uri) {
-  char *home = getenv("HOME");
-  char path_to_db[256];
   char *result = malloc(128);
   if (result == NULL) {
     printf("Memory allocation failed");
     return NULL;
   }
-
   result[0] = '\0';
-
-  snprintf(path_to_db, sizeof(path_to_db), "%s/.local/share/spd/cache.db",
-           home);
-
-  sqlite3 *db;
-
-  int rc = sqlite3_open(path_to_db, &db);
-
-  if (rc != SQLITE_OK) {
-    fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return NULL;
-  }
-
-  sqlite3_busy_timeout(db, 10000);
-  sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, 0, NULL);
 
   const char *sql = "SELECT value FROM videos WHERE uri = ?;";
   sqlite3_stmt *stmt;
 
-  rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+  int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
   if (rc != SQLITE_OK) {
     fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
     return NULL;
@@ -263,7 +223,6 @@ char *get_video_value_by_uri(char *uri) {
   }
 
   sqlite3_finalize(stmt);
-  sqlite3_close(db);
   return result;
 }
 
@@ -271,31 +230,6 @@ char *get_video_value_by_uri(char *uri) {
     Remove the video from the database
 */
 int rm_video(char *uri) {
-  char *home = getenv("HOME");
-  char path_to_db[256];
-
-  snprintf(path_to_db, sizeof(path_to_db), "%s/.local/share/spd/cache.db",
-           home);
-
-  sqlite3 *db;
-  char *err_msg = NULL;
-
-  int rc = sqlite3_open(path_to_db, &db);
-
-  if (rc != SQLITE_OK) {
-    fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return 1;
-  }
-  sqlite3_busy_timeout(db, 10000);
-  sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, 0, NULL);
-
-  rc = sqlite3_exec(db, "PRAGMA foreign_keys = ON;", 0, 0, &err_msg);
-  if (rc != SQLITE_OK) {
-    fprintf(stderr, "Failed to enable foreign keys: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return 1;
-  }
 
   if (db == NULL) {
     fprintf(stderr, "Database connection is NULL\n");
@@ -310,7 +244,7 @@ int rm_video(char *uri) {
   const char *sql = "DELETE FROM videos WHERE uri = ?;";
 
   sqlite3_stmt *stmt;
-  rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+  int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
   if (rc != SQLITE_OK) {
     fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
     return 1;
@@ -337,7 +271,7 @@ int rm_video(char *uri) {
 /*
     Add a segment to the video
 */
-int add_segment_to_video(sqlite3 *db, char *uri, char *name, char *video_name,
+int add_segment_to_video(char *uri, char *name, char *video_name,
                          char *og_uri) {
   const char *sql =
       "INSERT INTO segments (name,pending,video_uri,video_name,segment_uri) "
@@ -392,8 +326,8 @@ int add_segment_to_video(sqlite3 *db, char *uri, char *name, char *video_name,
 /*
     Get the segment status
 */
-int get_segment_status(sqlite3 *db, char *name, char *video_uri,
-                       char *segment_uri, char *video_name) {
+int get_segment_status(char *name, char *video_uri, char *segment_uri,
+                       char *video_name) {
 
   // Add error checking for NULL parameters
   if (!db || !name || !video_uri || !segment_uri || !video_name) {
@@ -440,7 +374,7 @@ int get_segment_status(sqlite3 *db, char *name, char *video_uri,
 /*
     Complete the segment status
 */
-int complete_segment_status(sqlite3 *db, char *segment_uri, char *name) {
+int complete_segment_status(char *segment_uri, char *name) {
   char *sql =
       "UPDATE segments SET pending = 0 WHERE segment_uri = ? AND name = ?;";
 

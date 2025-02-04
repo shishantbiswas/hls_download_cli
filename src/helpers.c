@@ -137,8 +137,7 @@ char *fetch(const char *url, MemoryStruct *chunk) {
   if (response != CURLE_OK) {
     curl_easy_cleanup(curl);
     curl_global_cleanup();
-    fprintf(stderr, "curl_easy_perform() failed: %s\n",
-            curl_easy_strerror(response));
+    fprintf(stderr, "[error] %s\n", curl_easy_strerror(response));
     return NULL;
   }
   curl_easy_cleanup(curl);
@@ -231,6 +230,33 @@ int download_file(char *uri, char *filename) {
   curl_easy_cleanup(curl);
   fclose(fp);
 
+  return 0;
+}
+
+int multi_download_file(char *uri, char *filename) {
+  if (!uri || !filename) {
+    fprintf(stderr, "Invalid parameters\n");
+    return 1;
+  }
+
+  if (strlen(filename) >= 512) {
+    fprintf(stderr, "Filename too long\n");
+    return 1;
+  }
+
+  if (strstr(filename, "..") != NULL) {
+    fprintf(stderr, "Invalid filename\n");
+    return 1;
+  }
+  CURLM *multi_handle = curl_multi_init();
+  CURL *easy_handle = curl_easy_init();
+
+  curl_multi_add_handle(multi_handle, easy_handle);
+  int transfers_running;
+  do {
+    curl_multi_wait(multi_handle, NULL, 0, 1000, NULL);
+    curl_multi_perform(multi_handle, &transfers_running);
+  } while (transfers_running);
   return 0;
 }
 

@@ -18,7 +18,7 @@ void show_help() {
   printf("  yt  Download YouTube video\n");
 }
 
-void show_version() { printf("Version 0.1.4\n"); }
+void show_version() { printf("Version 0.1.5\n"); }
 
 void yt(char *uri, char *resolution) {
   if (uri == NULL) {
@@ -54,9 +54,37 @@ void yt(char *uri, char *resolution) {
 }
 
 void dl(char *uri, char *addition_args) {
-  printf("%s%s",uri,addition_args);
+  // printf("%s%s", uri, addition_args);
+  // printf("\033[30mThis is black text\033[0m\n");
+  // printf("\033[31mThis is red text\033[0m\n");
+  // printf("\033[32mThis is green text\033[0m\n");
+  // printf("\033[33mThis is yellow text\033[0m\n");
+  // printf("\033[34mThis is blue text\033[0m\n");
+  // printf("\033[35mThis is magenta text\033[0m\n");
+  // printf("\033[36mThis is cyan text\033[0m\n");
+  // printf("\033[37mThis is white text\033[0m\n");
+
+  // printf("\033[90mThis is black text\033[0m\n");
+  // printf("\033[91mThis is red text\033[0m\n");
+  // printf("\033[92mThis is green text\033[0m\n");
+  // printf("\033[93mThis is yellow text\033[0m\n");
+  // printf("\033[94mThis is blue text\033[0m\n");
+  // printf("\033[95mThis is magenta text\033[0m\n");
+  // printf("\033[96mThis is cyan text\033[0m\n");
+  // printf("\033[97mThis is white text\033[0m\n");
+
+  // printf("\033[34;43mBlue text on yellow background\033[0m\n");
+  // add_video("somename","https://","uri_of_videp");
+  // add_segment_to_video("uri_of_videp1","segf_name","video","https://");
+  // add_segment_to_video("uri_of_videp2","sesg_name","video","https://");
+  // add_segment_to_video("uri_of_videp5","seg_nayme","video","https://");
+  // add_segment_to_video("uri_of_videp3","seg_vname","video","https://");
+  // add_segment_to_video("uri_of_videp4","seg_nhame","video","https://");
+  rm_video("https://");
   return;
 }
+
+sqlite3 *db;
 
 int main(int argc, char *argv[]) {
   if (argc < 2) {
@@ -72,19 +100,27 @@ int main(int argc, char *argv[]) {
   } else if (strcmp(command, "-v") == 0 || strcmp(command, "-version") == 0) {
     show_version();
   } else if (strcmp(command, "vd") == 0) {
+    open_db();
     hls_command(uri, addition_args);
   } else if (strcmp(command, "yt") == 0) {
     yt(uri, addition_args);
   } else if (strcmp(command, "dl") == 0) {
+    open_db();
     dl(uri, addition_args);
   } else if (strcmp(command, "init") == 0) {
+    open_db();
     init_db();
   } else if (strcmp(command, "rm") == 0) {
     rm_db();
+    open_db();
+    init_db();
   } else {
     printf("Unknown command: %s\n", command);
     show_help();
-    return 0;
+  }
+
+  if (db != NULL) {
+    sqlite3_close(db);
   }
 
   return 0;
