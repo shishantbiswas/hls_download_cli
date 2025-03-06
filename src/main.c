@@ -1,24 +1,28 @@
-#include "db.h"
 #include "helpers.h"
 #include "hls.h"
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-void show_help() {
-  printf("Usage: main [options] <command>\n");
-  printf("Options:\n");
-  printf("  -h/-help  Show help\n");
-  printf("  -v/-version  Show version information\n");
-  printf("Commands:\n");
-  printf("  init  Intialize the Cache Database\n");
-  printf("  rm  Clears the Datebase\n");
-  printf("  vd  Download hls video\n");
-  printf("  yt  Download YouTube video\n");
+bool isMulti;
+
+void show_help(void) {
+
+  printf("\033[33mUsage:\033[0m\n  spd [options] <command>\n"
+         "\033[33mOptions:\033[0m\n"
+         "  -h/--help     Show help\n"
+         "  -v/--version  Show version information\n\n"
+         "\033[33mCommands:\033[0m\n"
+         "  \033[32mvd\033[0m      Download hls video\n"
+         "  \033[32mmd\033[0m      Download hls video (multithreaded)\n"
+         "  \033[32myt\033[0m      Download YouTube video\n"
+         "  \033[32mrm\033[0m      Delete Datebase\n"
+         "  \033[32mfile\033[0m    Download using file\n");
 }
 
-void show_version() { printf("Version 0.1.5\n"); }
+void show_version(void) { printf("version 0.1.5\n"); }
 
 void yt(char *uri, char *resolution) {
   if (uri == NULL) {
@@ -39,7 +43,7 @@ void yt(char *uri, char *resolution) {
     snprintf(result, sizeof(result), "%s/Music", home);
   }
 
-  char command[1000];
+  char command[512];
   snprintf(command, sizeof(command),
            "yt-dlp -S \"res:%s\" -f mp4 -N 4 -o \"%s/%%(title)s.%%(ext)s\" %s",
            resolution != NULL ? resolution : "480", home != NULL ? result : "",
@@ -53,74 +57,90 @@ void yt(char *uri, char *resolution) {
   }
 }
 
-void dl(char *uri, char *addition_args) {
-  // printf("%s%s", uri, addition_args);
-  // printf("\033[30mThis is black text\033[0m\n");
-  // printf("\033[31mThis is red text\033[0m\n");
-  // printf("\033[32mThis is green text\033[0m\n");
-  // printf("\033[33mThis is yellow text\033[0m\n");
-  // printf("\033[34mThis is blue text\033[0m\n");
-  // printf("\033[35mThis is magenta text\033[0m\n");
-  // printf("\033[36mThis is cyan text\033[0m\n");
-  // printf("\033[37mThis is white text\033[0m\n");
+void download_from_text_file(char *file) {
+  FILE *fp;
+  fp = fopen(file, "r");
+  if (!fp) {
+    perror("Failed to create file");
+    return;
+  }
 
-  // printf("\033[90mThis is black text\033[0m\n");
-  // printf("\033[91mThis is red text\033[0m\n");
-  // printf("\033[92mThis is green text\033[0m\n");
-  // printf("\033[93mThis is yellow text\033[0m\n");
-  // printf("\033[94mThis is blue text\033[0m\n");
-  // printf("\033[95mThis is magenta text\033[0m\n");
-  // printf("\033[96mThis is cyan text\033[0m\n");
-  // printf("\033[97mThis is white text\033[0m\n");
+  fseek(fp, 0, SEEK_END);
+  long file_size = ftell(fp);
+  rewind(fp);
 
-  // printf("\033[34;43mBlue text on yellow background\033[0m\n");
-  // add_video("somename","https://","uri_of_videp");
-  // add_segment_to_video("uri_of_videp1","segf_name","video","https://");
-  // add_segment_to_video("uri_of_videp2","sesg_name","video","https://");
-  // add_segment_to_video("uri_of_videp5","seg_nayme","video","https://");
-  // add_segment_to_video("uri_of_videp3","seg_vname","video","https://");
-  // add_segment_to_video("uri_of_videp4","seg_nhame","video","https://");
-  rm_video("https://");
-  return;
+  char *buffer = (char *)malloc(file_size + 1);
+  if (buffer == NULL) {
+    perror("Memory allocation failed");
+    fclose(fp);
+    return;
+  }
+
+  fread(buffer, 1, file_size, fp);
+  buffer[file_size] = '\0';
+
+  char **lines = split(buffer, "\n");
+
+  for (int i = 0; lines[i] != NULL; i++) {
+    if (start_with("#", lines[i]) || start_with("//", lines[i])) {
+      printf("Ingoring line ");
+      printf("%s \n", lines[i]);
+      continue;
+    } else if (start_with("exit", lines[i])) {
+      printf("exiting...");
+      break;
+    } else {
+
+      char **args = split(lines[i], " ");
+
+      char *command = args[0];
+      char *uri = args[1];
+      char *addition_args = args[2] ? args[2] : NULL;
+      if (strcmp(command, "yt") == 0) {
+        yt(uri, addition_args);
+      } else if (strcmp(command, "md") == 0) {
+        isMulti = true;
+        hls_command(uri, addition_args);
+      } else {
+        isMulti = false;
+        hls_command(uri, addition_args);
+      }
+      free_split(args);
+    }
+  }
+
+  free_split(lines);
+  free(buffer);
+  fclose(fp);
 }
 
-sqlite3 *db;
 
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     show_help();
     return 0;
   }
-  char *command = argv[1];
+  char *cmd = argv[1];
   char *uri = argv[2];
-  char *addition_args = argv[3];
+  char *addition_args = (argc > 3) ? argv[3] : NULL;
 
-  if (strcmp(command, "-h") == 0 || strcmp(command, "-help") == 0) {
+  if (strcmp(cmd, "-h") == 0 || strcmp(cmd, "--help") == 0) {
     show_help();
-  } else if (strcmp(command, "-v") == 0 || strcmp(command, "-version") == 0) {
+  } else if (strcmp(cmd, "-v") == 0 || strcmp(cmd, "--version") == 0) {
     show_version();
-  } else if (strcmp(command, "vd") == 0) {
-    open_db();
+  } else if (strcmp(cmd, "vd") == 0) {
+    isMulti = false;
     hls_command(uri, addition_args);
-  } else if (strcmp(command, "yt") == 0) {
+  } else if (strcmp(cmd, "md") == 0) {
+    isMulti = true;
+    hls_command(uri, addition_args);
+  } else if (strcmp(cmd, "yt") == 0) {
     yt(uri, addition_args);
-  } else if (strcmp(command, "dl") == 0) {
-    open_db();
-    dl(uri, addition_args);
-  } else if (strcmp(command, "init") == 0) {
-    open_db();
-    init_db();
-  } else if (strcmp(command, "rm") == 0) {
-    rm_db();
-    open_db();
-    init_db();
+  } else if (strcmp(cmd, "file") == 0) {
+    download_from_text_file(uri);
   } else {
-    printf("Unknown command: %s\n", command);
+    printf("Unknown command: %s\n", cmd);
     show_help();
-  }
-
-  if (db != NULL) {
-    sqlite3_close(db);
   }
 
   return 0;

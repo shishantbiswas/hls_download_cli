@@ -133,13 +133,26 @@ char *fetch(const char *url, MemoryStruct *chunk) {
   curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 50L);
   curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 10L);
 
+  // printf("%s",url);
   response = curl_easy_perform(curl);
+  if (response == CURLE_WEIRD_SERVER_REPLY) {
+    fprintf(stderr, "[error] %s\n", curl_easy_strerror(response));
+    exit(1);
+    return NULL;
+  }
   if (response != CURLE_OK) {
     curl_easy_cleanup(curl);
     curl_global_cleanup();
     fprintf(stderr, "[error] %s\n", curl_easy_strerror(response));
     return NULL;
   }
+  long code;
+  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+  if(code != 200){
+    printf("Request returned error");
+    exit(EXIT_FAILURE);
+  }
+  chunk->response_code = code;
   curl_easy_cleanup(curl);
   curl_global_cleanup();
   return chunk->memory;
@@ -156,7 +169,7 @@ char *random_string(int limit) {
     return NULL;
   }
 
-  char char_set[] = "abcdefghijklmnopqrstuvwxyz";
+  char char_set[] = "abcdefghijklmnopqrstuvwxyz1234567890";
   int char_set_size = sizeof(char_set) - 1;
 
   srand((unsigned int)time(0));

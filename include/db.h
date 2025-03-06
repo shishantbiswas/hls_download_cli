@@ -3,10 +3,11 @@
 #ifndef DB_H
 #define DB_H
 
-int open_db();
-int init_db();
-int rm_db();
+int open_db(void);
+int init_db(void);
+int rm_db(void);
 int add_video(char *name, char *uri, char *video_uri);
+int add_video_to_pending(char *uri, char *type, char *arg);
 char *get_video_value_by_uri(char *uri);
 int rm_video(char *uri);
 void get_video_by_uri(char *uri,char *result) ;

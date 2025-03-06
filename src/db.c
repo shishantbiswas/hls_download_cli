@@ -7,7 +7,7 @@
 
 extern sqlite3 *db;
 
-int open_db() {
+int open_db(void) {
   char *home = getenv("HOME");
   char result[256];
 
@@ -55,7 +55,7 @@ int open_db() {
 /*
     Initialize the database
 */
-int init_db() {
+int init_db(void) {
 
   char *err_msg = NULL;
 
@@ -72,6 +72,11 @@ int init_db() {
         video_uri TEXT NOT NULL,\
         PRIMARY KEY (video_uri, name),\
         FOREIGN KEY (video_uri) REFERENCES videos(uri) ON DELETE CASCADE\
+    );\
+    CREATE TABLE IF NOT EXISTS videos_pending (\
+        uri TEXT NOT NULL UNIQUE PRIMARY KEY,\
+        type TEXT NOT NULL,\
+        arg TEXT\
     );";
 
   int rc = sqlite3_exec(db, sql, 0, 0, &err_msg);
@@ -88,7 +93,7 @@ int init_db() {
 /*
     Remove the database
 */
-int rm_db() {
+int rm_db(void) {
   char *home = getenv("HOME");
   char db_path[256];
 
@@ -115,7 +120,7 @@ int rm_db() {
 }
 
 /*
-    Add a video to the database
+    Add a video to the video table
 */
 int add_video(char *name, char *uri, char *video_uri) {
   char *sql = "INSERT INTO videos (name,uri,value) VALUES (?, ?, ?);";
@@ -142,6 +147,61 @@ int add_video(char *name, char *uri, char *video_uri) {
   }
 
   rc = sqlite3_bind_text(stmt, 3, video_uri, -1, SQLITE_STATIC);
+  if (rc != SQLITE_OK) {
+    fprintf(stderr, "Failed to bind video_uri: %s\n", sqlite3_errmsg(db));
+    sqlite3_finalize(stmt);
+    return 1;
+  }
+
+  rc = sqlite3_step(stmt);
+  if (rc != SQLITE_DONE) {
+    fprintf(stderr, "Failed to execute statement: %s\n", sqlite3_errmsg(db));
+    sqlite3_finalize(stmt);
+    return 1;
+  }
+
+  sqlite3_finalize(stmt);
+  return 0;
+}
+
+/*
+    Add a video to the pending table
+*/
+int add_video_to_pending(char *uri, char *type, char *arg) {
+  char *sql = "INSERT INTO videos_pending (uri,type,arg) VALUES (?, ?, ?);";
+  if (uri == NULL) {
+    printf("%s", "Example: spd add https://www.youtube.com/watch?v=id yt\n");
+    printf("%s", "URL is missing!\n");
+    return 1;
+  }
+  
+  if (strcmp(type, "yt") != 0 && strcmp(type, "vd") != 0) {
+    printf("Type can only be `vd` or `yt` \n");
+    return 1;
+  }
+
+  sqlite3_stmt *stmt;
+  int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+  if (rc != SQLITE_OK) {
+    fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+    return 1;
+  }
+
+  rc = sqlite3_bind_text(stmt, 1, uri, -1, SQLITE_STATIC);
+  if (rc != SQLITE_OK) {
+    fprintf(stderr, "Failed to bind name: %s\n", sqlite3_errmsg(db));
+    sqlite3_finalize(stmt);
+    return 1;
+  }
+
+  rc = sqlite3_bind_text(stmt, 2, type, -1, SQLITE_STATIC);
+  if (rc != SQLITE_OK) {
+    fprintf(stderr, "Failed to bind uri: %s\n", sqlite3_errmsg(db));
+    sqlite3_finalize(stmt);
+    return 1;
+  }
+
+  rc = sqlite3_bind_text(stmt, 3, arg, -1, SQLITE_STATIC);
   if (rc != SQLITE_OK) {
     fprintf(stderr, "Failed to bind video_uri: %s\n", sqlite3_errmsg(db));
     sqlite3_finalize(stmt);

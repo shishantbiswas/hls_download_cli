@@ -1,15 +1,13 @@
 CC = gcc
-CFLAGS = -Iinclude
-#  -Wall -Wextra -Werror -pedantic -D_GNU_SOURCE
-SRC = src/main.c src/helpers.c src/hls.c src/db.c
+CFLAGS = -Iinclude -g -std=c11  -pedantic -Wall -Wextra -Werror -pedantic -D_GNU_SOURCE
+SRC = src/main.c src/helpers.c src/hls.c 
 OBJ = $(SRC:src/%.c=build/%.o)
 OUT = build/spd
 
 $(OUT): $(OBJ)
-	$(CC) -o $(OUT) $(OBJ) -lcurl -lsqlite3 -pthread -DSQLITE_THREADSAFE=1
-
+	$(CC) -O -o $(OUT) $(OBJ) -lcurl -pthread 
 build/%.o: src/%.c
-	$(CC) -c $(CFLAGS) $< -o $@
+	$(CC)  -c $(CFLAGS) $< -o $@
 
 clean:
 	rm -f build/** $(OUT)

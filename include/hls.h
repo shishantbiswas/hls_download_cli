@@ -1,6 +1,8 @@
 #ifndef HLS_H
 #define HLS_H
 
+#include <stdbool.h>
+
 typedef struct Info {
   char uri[1024];
   char segment_uri[1024];

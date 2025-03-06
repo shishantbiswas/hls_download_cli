@@ -7,6 +7,7 @@
 typedef struct {
   char *memory;
   size_t size;
+  long response_code;
 } MemoryStruct;
 
 void remove_invisible_chars(char *str);
